@@ -314,13 +314,15 @@ public final class CustomAppender extends AbstractOutputStreamAppender<RollingFi
         Long t2 = System.currentTimeMillis();
         Long t3 = t2-t1;
         if(log_event_time.size()==EventArraySize){
-            System.out.println("\"********************:\" +"+logEventtime(log_event_time).toString());
+            ArrayList<Long> copyList = new ArrayList<>(log_event_time);
+            log_event_time.clear();
+            System.out.println("\"********************:\" +"+logEventtime(copyList).toString());
             try {
-                writeToCSV(logEventtime(log_event_time));
+                writeToCSV(logEventtime(copyList));
             } catch (IOException e) {
                 e.printStackTrace();
             }
-            log_event_time.clear();
+
         }else {
             log_event_time.add(t3);
         }
