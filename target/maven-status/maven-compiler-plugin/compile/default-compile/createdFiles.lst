@@ -1,0 +1,4 @@
+org/wso2/custom/appender/CustomAppender$1.class
+org/wso2/custom/appender/CustomAppender$Builder.class
+org/wso2/custom/appender/CustomAppender.class
+META-INF/org/apache/logging/log4j/core/config/plugins/Log4j2Plugins.dat
