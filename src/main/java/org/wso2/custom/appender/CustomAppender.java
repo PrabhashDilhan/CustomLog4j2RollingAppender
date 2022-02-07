@@ -13,7 +13,6 @@ import java.util.concurrent.TimeUnit;
 import java.util.zip.Deflater;
 
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
-import com.opencsv.CSVWriter;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.logging.log4j.core.Appender;
