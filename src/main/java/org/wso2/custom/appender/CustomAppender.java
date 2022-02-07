@@ -291,7 +291,7 @@ public final class CustomAppender extends AbstractOutputStreamAppender<RollingFi
         }else {
              this.EventArraySize = 100;
         }
-        this.LogEventLatencyOut =  System.getProperty("carbon.home")+"/repository/logs/logeventlatency.csv";
+        this.LogEventLatencyOut =  System.getProperty("carbon.home")+File.separator+"repository"+File.separator+"logs"+File.separator+"logeventlatency.csv";
     }
 
     @Override
@@ -311,22 +311,25 @@ public final class CustomAppender extends AbstractOutputStreamAppender<RollingFi
      */
     @Override
     public void append(final LogEvent event) {
-        getManager().checkRollover(event);
         Long t1 = System.currentTimeMillis();
-        super.append(event);
-        Long t2 = System.currentTimeMillis();
-        Long t3 = t2-t1;
-        if(log_event_time.size()==EventArraySize){
-            ArrayList<Long> copyList = new ArrayList<>(log_event_time);
-            log_event_time.clear();
-            try {
-                writeToCSV(logEventtime(copyList));
-            } catch (IOException e) {
-                log.error("Exception occurred in the customer appender",e);
-            }
+        try{
+             getManager().checkRollover(event);
+             super.append(event);
+        }finally {
+            Long t2 = System.currentTimeMillis();
+            Long t3 = t2 - t1;
+            if (log_event_time.size() == EventArraySize) {
+                ArrayList<Long> copyList = new ArrayList<>(log_event_time);
+                log_event_time.clear();
+                try {
+                    writeToCSV(logEventtime(copyList));
+                } catch (IOException e) {
+                    log.error("Exception occurred in the customer appender", e);
+                }
 
-        }else {
-            log_event_time.add(t3);
+            } else {
+                log_event_time.add(t3);
+            }
         }
     }
 
@@ -381,17 +384,19 @@ public final class CustomAppender extends AbstractOutputStreamAppender<RollingFi
     public void writeToCSV(String[] Eventlatency) throws IOException {
         File file = new File(LogEventLatencyOut);
         if(file.createNewFile()){
-            FileWriter outputfile = new FileWriter(file,true);
-            CSVWriter writer = new CSVWriter(outputfile);
-            String[] header = { "TimeStamp", "Maxtime", "Mintime", "Avgtime", "Median" };
-            writer.writeNext(header);
-            writer.writeNext(Eventlatency);
-            writer.close();
+            CSVWriter writer;
+            try (FileWriter outputfile = new FileWriter(file, true)) {
+                writer = new CSVWriter(outputfile);
+                String[] header = {"TimeStamp", "Maxtime", "Mintime", "Avgtime", "Median"};
+                writer.writeNext(header);
+                writer.writeNext(Eventlatency);
+            }
         }else{
-            FileWriter outputfile = new FileWriter(file,true);
-            CSVWriter writer = new CSVWriter(outputfile);
-            writer.writeNext(Eventlatency);
-            writer.close();
+            CSVWriter writer;
+            try (FileWriter outputfile = new FileWriter(file, true)) {
+                writer = new CSVWriter(outputfile);
+                writer.writeNext(Eventlatency);
+            }
         }
 
     }
