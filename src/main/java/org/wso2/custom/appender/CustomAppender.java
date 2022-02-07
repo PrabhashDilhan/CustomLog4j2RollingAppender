@@ -1,18 +1,13 @@
 package org.wso2.custom.appender;
 
 import java.io.File;
-import java.io.FileWriter;
-import java.io.IOException;
 import java.io.Serializable;
-import java.sql.Timestamp;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import java.util.zip.Deflater;
 
-import com.opencsv.CSVWriter;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.logging.log4j.core.Appender;
@@ -37,6 +32,8 @@ import org.apache.logging.log4j.core.config.plugins.validation.constraints.Requi
 import org.apache.logging.log4j.core.net.Advertiser;
 import org.apache.logging.log4j.core.util.Booleans;
 import org.apache.logging.log4j.core.util.Integers;
+import org.wso2.carbon.metrics.manager.MetricManager;
+import org.wso2.carbon.metrics.manager.Timer;
 
 /**
  * An appender that writes to files and can roll over at intervals.
@@ -268,9 +265,6 @@ public final class CustomAppender extends AbstractOutputStreamAppender<RollingFi
     private final String filePattern;
     private Object advertisement;
     private final Advertiser advertiser;
-    private ArrayList<Long> log_event_time = new ArrayList<Long>();
-    private int EventArraySize;
-    private String LogEventLatencyOut;
 
     private CustomAppender(final String name, final Layout<? extends Serializable> layout, final Filter filter,
                            final RollingFileManager manager, final String fileName, final String filePattern,
@@ -286,12 +280,6 @@ public final class CustomAppender extends AbstractOutputStreamAppender<RollingFi
         this.fileName = fileName;
         this.filePattern = filePattern;
         this.advertiser = advertiser;
-        if(System.getProperty("EventArraySize") != null)  {
-             this.EventArraySize =   Integer.parseInt(System.getProperty("EventArraySize"));
-        }else {
-             this.EventArraySize = 100;
-        }
-        this.LogEventLatencyOut =  System.getProperty("carbon.home")+File.separator+"repository"+File.separator+"logs"+File.separator+"logeventlatency.csv";
     }
 
     @Override
@@ -311,94 +299,23 @@ public final class CustomAppender extends AbstractOutputStreamAppender<RollingFi
      */
     @Override
     public void append(final LogEvent event) {
-        Long t1 = System.currentTimeMillis();
+        Timer.Context context = startMetricTimer();
         try{
              getManager().checkRollover(event);
              super.append(event);
         }finally {
-            Long t2 = System.currentTimeMillis();
-            Long t3 = t2 - t1;
-            if (log_event_time.size() == EventArraySize) {
-                ArrayList<Long> copyList = new ArrayList<>(log_event_time);
-                log_event_time.clear();
-                try {
-                    writeToCSV(logEventtime(copyList));
-                } catch (IOException e) {
-                    log.error("Exception occurred in the customer appender", e);
-                }
-
-            } else {
-                log_event_time.add(t3);
-            }
+            stopMetricTimer(context);
         }
     }
 
-    /**
-     * Returns the Event time log.
-     * @retun The log event.
-     */
-    protected String[] logEventtime(ArrayList<Long> Arrlist){
-        Long max = Collections.max(Arrlist);
-        Long min = Collections.min(Arrlist);
-        Double avg = calculateAverage(Arrlist);
-        Long middle = getMedian(Arrlist);
-        Timestamp timestamp = new Timestamp(System.currentTimeMillis());
-        String[] logEventLatency = {timestamp.toString(),Long.toString(max),Long.toString(min),Double.toString(avg),Long.toString(middle)};
-
-        return logEventLatency;
+    protected void stopMetricTimer(Timer.Context context) {
+        context.stop();
     }
 
-    /**
-     * Returns the avarage log event time
-     * @return avg log event
-     */
-     private double calculateAverage(ArrayList<Long> Arrlist) {
-        double sum = 0;
-        if(!Arrlist.isEmpty()) {
-            for (Long mark : Arrlist) {
-                sum += mark;
-            }
-            return sum / Arrlist.size();
-        }
-        return sum;
-     }
-
-    /**
-     * Return the median of log event time
-     * @return median log event
-     */
-     public Long getMedian(ArrayList<Long> Arrlist){
-        Collections.sort(Arrlist);
-        Long middle = Arrlist.get(Arrlist.size() / 2);
-        if (Arrlist.size()%2 == 0) {
-            middle = (Arrlist.get(Arrlist.size()/2) + Arrlist.get(Arrlist.size()/2 - 1))/2;
-        } else {
-            middle = Arrlist.get(Arrlist.size() / 2);
-        }
-        return middle;
-     }
-
-    /**
-     * Write log event latency to the csv file
-     */
-    public void writeToCSV(String[] Eventlatency) throws IOException {
-        File file = new File(LogEventLatencyOut);
-        if(file.createNewFile()){
-            CSVWriter writer;
-            try (FileWriter outputfile = new FileWriter(file, true)) {
-                writer = new CSVWriter(outputfile);
-                String[] header = {"TimeStamp", "Maxtime", "Mintime", "Avgtime", "Median"};
-                writer.writeNext(header);
-                writer.writeNext(Eventlatency);
-            }
-        }else{
-            CSVWriter writer;
-            try (FileWriter outputfile = new FileWriter(file, true)) {
-                writer = new CSVWriter(outputfile);
-                writer.writeNext(Eventlatency);
-            }
-        }
-
+    protected Timer.Context startMetricTimer() {
+        Timer timer = MetricManager.timer(org.wso2.carbon.metrics.manager.Level.INFO, MetricManager.name(
+                "org.wso2.custom.appender", this.getClass().getSimpleName()));
+        return timer.start();
     }
 
     /**
