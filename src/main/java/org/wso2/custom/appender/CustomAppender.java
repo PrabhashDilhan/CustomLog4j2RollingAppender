@@ -13,6 +13,8 @@ import java.util.concurrent.TimeUnit;
 import java.util.zip.Deflater;
 
 import com.opencsv.CSVWriter;
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
 import org.apache.logging.log4j.core.Appender;
 import org.apache.logging.log4j.core.Core;
 import org.apache.logging.log4j.core.Filter;
@@ -43,6 +45,7 @@ import org.apache.logging.log4j.core.util.Integers;
 public final class CustomAppender extends AbstractOutputStreamAppender<RollingFileManager> {
 
     public static final String PLUGIN_NAME = "CustomAppender";
+    private static final Log log = LogFactory.getLog(CustomAppender.class);
 
     /**
      * Builds FileAppender instances.
@@ -316,11 +319,10 @@ public final class CustomAppender extends AbstractOutputStreamAppender<RollingFi
         if(log_event_time.size()==EventArraySize){
             ArrayList<Long> copyList = new ArrayList<>(log_event_time);
             log_event_time.clear();
-            System.out.println("\"********************:\" +"+logEventtime(copyList).toString());
             try {
                 writeToCSV(logEventtime(copyList));
             } catch (IOException e) {
-                e.printStackTrace();
+                log.error("Exception occurred in the customer appender",e);
             }
 
         }else {
@@ -337,7 +339,6 @@ public final class CustomAppender extends AbstractOutputStreamAppender<RollingFi
         Long min = Collections.min(Arrlist);
         Double avg = calculateAverage(Arrlist);
         Long middle = getMedian(Arrlist);
-        String logg= "10 Log events maxtime: " +max+"|mintime: "+min+"|avgtime: "+avg+"|median: " +middle+"";
         Timestamp timestamp = new Timestamp(System.currentTimeMillis());
         String[] logEventLatency = {timestamp.toString(),Long.toString(max),Long.toString(min),Double.toString(avg),Long.toString(middle)};
 
