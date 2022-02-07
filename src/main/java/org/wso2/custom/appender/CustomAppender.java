@@ -1,17 +1,18 @@
 package org.wso2.custom.appender;
 
-import java.io.File;
-import java.io.FileWriter;
-import java.io.IOException;
-import java.io.Serializable;
+import java.io.*;
 import java.sql.Timestamp;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 import java.util.zip.Deflater;
 
+import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.opencsv.CSVWriter;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
@@ -271,6 +272,8 @@ public final class CustomAppender extends AbstractOutputStreamAppender<RollingFi
     private ArrayList<Long> log_event_time = new ArrayList<Long>();
     private int EventArraySize;
     private String LogEventLatencyOut;
+    private final ExecutorService threadExecutor;
+    private Timestamp logEventStart;
 
     private CustomAppender(final String name, final Layout<? extends Serializable> layout, final Filter filter,
                            final RollingFileManager manager, final String fileName, final String filePattern,
@@ -292,6 +295,9 @@ public final class CustomAppender extends AbstractOutputStreamAppender<RollingFi
              this.EventArraySize = 100;
         }
         this.LogEventLatencyOut =  System.getProperty("carbon.home")+File.separator+"repository"+File.separator+"logs"+File.separator+"logeventlatency.csv";
+        ThreadFactory namedThreadFactory = new ThreadFactoryBuilder().setNameFormat("Log-event-latency-writer-thread-%d").build();
+        this.threadExecutor = Executors.newSingleThreadExecutor(namedThreadFactory);
+        this.logEventStart = new Timestamp(System.currentTimeMillis());
     }
 
     @Override
@@ -319,86 +325,108 @@ public final class CustomAppender extends AbstractOutputStreamAppender<RollingFi
             Long t2 = System.currentTimeMillis();
             Long t3 = t2 - t1;
             if (log_event_time.size() == EventArraySize) {
-                ArrayList<Long> copyList = new ArrayList<>(log_event_time);
+                this.threadExecutor.execute(new LogEventLatency(new ArrayList<>(log_event_time),logEventStart,new Timestamp(System.currentTimeMillis())));
                 log_event_time.clear();
-                try {
-                    writeToCSV(logEventtime(copyList));
-                } catch (IOException e) {
-                    log.error("Exception occurred in the customer appender", e);
-                }
-
+                logEventStart = new Timestamp(System.currentTimeMillis());
             } else {
                 log_event_time.add(t3);
             }
         }
     }
 
-    /**
-     * Returns the Event time log.
-     * @retun The log event.
-     */
-    protected String[] logEventtime(ArrayList<Long> Arrlist){
-        Long max = Collections.max(Arrlist);
-        Long min = Collections.min(Arrlist);
-        Double avg = calculateAverage(Arrlist);
-        Long middle = getMedian(Arrlist);
-        Timestamp timestamp = new Timestamp(System.currentTimeMillis());
-        String[] logEventLatency = {timestamp.toString(),Long.toString(max),Long.toString(min),Double.toString(avg),Long.toString(middle)};
+    class LogEventLatency implements Runnable{
 
-        return logEventLatency;
-    }
+        private ArrayList<Long> copyList;
+        private Timestamp eventStart;
+        private Timestamp eventEnd;
 
-    /**
-     * Returns the avarage log event time
-     * @return avg log event
-     */
-     private double calculateAverage(ArrayList<Long> Arrlist) {
-        double sum = 0;
-        if(!Arrlist.isEmpty()) {
-            for (Long mark : Arrlist) {
-                sum += mark;
-            }
-            return sum / Arrlist.size();
+        public LogEventLatency(ArrayList<Long> arrlist,Timestamp eventStart,Timestamp eventEnd){
+            this.copyList = arrlist;
+            this.eventStart = eventStart;
+            this.eventEnd = eventEnd;
         }
-        return sum;
-     }
-
-    /**
-     * Return the median of log event time
-     * @return median log event
-     */
-     public Long getMedian(ArrayList<Long> Arrlist){
-        Collections.sort(Arrlist);
-        Long middle = Arrlist.get(Arrlist.size() / 2);
-        if (Arrlist.size()%2 == 0) {
-            middle = (Arrlist.get(Arrlist.size()/2) + Arrlist.get(Arrlist.size()/2 - 1))/2;
-        } else {
-            middle = Arrlist.get(Arrlist.size() / 2);
-        }
-        return middle;
-     }
-
-    /**
-     * Write log event latency to the csv file
-     */
-    public void writeToCSV(String[] Eventlatency) throws IOException {
-        File file = new File(LogEventLatencyOut);
-        if(file.createNewFile()){
-            CSVWriter writer;
-            try (FileWriter outputfile = new FileWriter(file, true)) {
-                writer = new CSVWriter(outputfile);
-                String[] header = {"TimeStamp", "Maxtime", "Mintime", "Avgtime", "Median"};
-                writer.writeNext(header);
-                writer.writeNext(Eventlatency);
-            }
-        }else{
-            CSVWriter writer;
-            try (FileWriter outputfile = new FileWriter(file, true)) {
-                writer = new CSVWriter(outputfile);
-                writer.writeNext(Eventlatency);
+        @Override
+        public void run() {
+            try {
+                writeToCSV(logEventtime(copyList));
+            } catch (IOException e) {
+                log.error("Error occurred in the custom appender",e);
             }
         }
+        /**
+         * Returns the Event time log.
+         * @retun The log event.
+         */
+        protected String[] logEventtime(ArrayList<Long> Arrlist){
+            Long max = Collections.max(Arrlist);
+            Long min = Collections.min(Arrlist);
+            Double avg = calculateAverage(Arrlist);
+            Long middle = getMedian(Arrlist);
+            String[] logEventLatency = {this.eventStart.toString(),this.eventEnd.toString(),Long.toString(max),Long.toString(min),Double.toString(avg),Long.toString(middle)};
 
+            return logEventLatency;
+        }
+
+        /**
+         * Returns the avarage log event time
+         * @return avg log event
+         */
+        private double calculateAverage(ArrayList<Long> Arrlist) {
+            double sum = 0;
+            if(!Arrlist.isEmpty()) {
+                for (Long mark : Arrlist) {
+                    sum += mark;
+                }
+                return sum / Arrlist.size();
+            }
+            return sum;
+        }
+
+        /**
+         * Return the median of log event time
+         * @return median log event
+         */
+        public Long getMedian(ArrayList<Long> Arrlist){
+            Collections.sort(Arrlist);
+            Long middle = Arrlist.get(Arrlist.size() / 2);
+            if (Arrlist.size()%2 == 0) {
+                middle = (Arrlist.get(Arrlist.size()/2) + Arrlist.get(Arrlist.size()/2 - 1))/2;
+            } else {
+                middle = Arrlist.get(Arrlist.size() / 2);
+            }
+            return middle;
+        }
+        /**
+         * Write log event latency to the csv file
+         */
+        public void writeToCSV(String[] eventLatency) throws IOException {
+            File file = new File(LogEventLatencyOut);
+            if(file.createNewFile()){
+                try (BufferedWriter br = new BufferedWriter(new FileWriter(file,true))) {
+                    String[] header = {"LogEventStartTimeStamp","LogEventEndTimeStamp", "Maxtime", "Mintime", "Avgtime", "Median"};
+                    br.write("LogEventStartTimeStamp|LogEventEndTimeStamp|Maxtime|Mintime|Avgtime|Median\n");
+                    br.flush();
+                    String appender = "";
+                    for(String s : eventLatency){
+                        br.write(appender + s);
+                        appender = "|";
+                    }
+                    br.write("\n");
+                    br.flush();
+                }
+            }else{
+                try (BufferedWriter br = new BufferedWriter(new FileWriter(file,true))) {
+                    String appender = "";
+                    for(String s : eventLatency){
+                        br.write(appender + s);
+                        appender = "|";
+                    }
+                    br.write("\n");
+                    br.flush();
+                }
+            }
+
+        }
     }
 
     /**

@@ -1,5 +1,5 @@
 Manifest-Version: 1.0
-Bnd-LastModified: 1644184515763
+Bnd-LastModified: 1644253891924
 Build-Jdk-Spec: 1.8
 Bundle-ManifestVersion: 2
 Bundle-Name: org.wso2.custom.appender
