@@ -1,4 +1,4 @@
-package org.wso2.custom.appender;
+package com.custom.appender;
 
 import java.io.*;
 import java.sql.Timestamp;
@@ -13,8 +13,6 @@ import java.util.concurrent.TimeUnit;
 import java.util.zip.Deflater;
 
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
 import org.apache.logging.log4j.core.Appender;
 import org.apache.logging.log4j.core.Core;
 import org.apache.logging.log4j.core.Filter;
@@ -45,8 +43,6 @@ import org.apache.logging.log4j.core.util.Integers;
 public final class CustomAppender extends AbstractOutputStreamAppender<RollingFileManager> {
 
     public static final String PLUGIN_NAME = "CustomAppender";
-    private static final Log log = LogFactory.getLog(CustomAppender.class);
-
     /**
      * Builds FileAppender instances.
      *
@@ -316,20 +312,20 @@ public final class CustomAppender extends AbstractOutputStreamAppender<RollingFi
      */
     @Override
     public void append(final LogEvent event) {
-        Long t1 = System.currentTimeMillis();
+        Long time_t1 = System.currentTimeMillis();
         try{
              getManager().checkRollover(event);
              super.append(event);
         }finally {
-            Long t2 = System.currentTimeMillis();
-            Long t3 = t2 - t1;
+            Long time_t2 = System.currentTimeMillis();
+            Long t3 = time_t2 - time_t1;
             if (log_event_time.size() == EventArraySize) {
                 this.threadExecutor.execute(new LogEventLatency(new ArrayList<>(log_event_time),logEventStart,new Timestamp(System.currentTimeMillis())));
                 log_event_time.clear();
+            }else if(log_event_time.isEmpty()) {
                 logEventStart = new Timestamp(System.currentTimeMillis());
-            } else {
-                log_event_time.add(t3);
             }
+            log_event_time.add(t3);
         }
     }
 
@@ -349,7 +345,7 @@ public final class CustomAppender extends AbstractOutputStreamAppender<RollingFi
             try {
                 writeToCSV(logEventtime(copyList));
             } catch (IOException e) {
-                log.error("Error occurred in the custom appender",e);
+                LOGGER.error("Error occurred in the custom appender",e);
             }
         }
         /**
@@ -402,7 +398,6 @@ public final class CustomAppender extends AbstractOutputStreamAppender<RollingFi
             File file = new File(LogEventLatencyOut);
             if(file.createNewFile()){
                 try (BufferedWriter br = new BufferedWriter(new FileWriter(file,true))) {
-                    String[] header = {"LogEventStartTimeStamp","LogEventEndTimeStamp", "Maxtime", "Mintime", "Avgtime", "Median"};
                     br.write("LogEventStartTimeStamp|LogEventEndTimeStamp|Maxtime|Mintime|Avgtime|Median\n");
                     br.flush();
                     String appender = "";
